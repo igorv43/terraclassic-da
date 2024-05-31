@@ -31,7 +31,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func NewTX3(ctx context.Context){
+func NewTX4(ctx context.Context){
 	
 	const (
 		nodeURL         = "http://localhost:1317" // URL do nó Cosmos REST
@@ -47,16 +47,7 @@ func NewTX3(ctx context.Context){
 	config := sdktypes.GetConfig()
 	config.SetBech32PrefixForAccount("terra", "terrapub")
 	config.Seal()
-senderFrom, err := sdktypes.AccAddressFromBech32("terra1c6xt0dyd70dral83rtsdvlga4ke4xhtq5l7792")
- if err != nil {
-	log.Fatalf("endereço origem: %v", err)
-}
- senderTo, err := sdktypes.AccAddressFromBech32("terra1c6xt0dyd70dral83rtsdvlga4ke4xhtq5l7792")
- if err != nil {
-	log.Fatalf("endereço destino: %v", err)
-}
-fmt.Printf("endereço origem: %v\n", senderFrom.String())
-fmt.Printf("endereço destino: %v\n", senderTo.String())
+
 
 executeMsg := map[string]interface{}{
 	"increment": map[string]interface{}{},
@@ -103,33 +94,7 @@ msg := wasmtypes.MsgExecuteContract{
     txBuilder.SetFeeAmount(sdktypes.NewCoins(sdktypes.NewInt64Coin("uluna", 230000000) )) 
     txBuilder.SetMemo("")
     txBuilder.SetTimeoutHeight(0)
-	privKeyBytes, err := hex.DecodeString(privateKeyHex)
-	if err != nil {
-		log.Fatalf("failed to decode private key: %v", err)
-	}
-
-
 	
-    if err != nil {
-        log.Fatalf("Erro ao decodificar chave secreta hexadecimal: %v", err)
-    }
-
-    // Gere a chave privada a partir dos bytes secretos
-    privKeyx := secp256k1.GenPrivKeyFromSecret(privKeyBytes)
-
-    
-
-    // Obtenha a chave pública a partir da chave privada
-    pubKeyx := privKeyx.PubKey()
-
-    // Exiba a chave privada e a chave pública em formato hexadecimal
-   // privKeyHex := hex.EncodeToString(privKeyx.Bytes())
-    pubKeyHex := hex.EncodeToString(pubKeyx.Bytes())
-    fmt.Println("Chave privada (hex):", pubKeyx.Address())
-    fmt.Println("Chave pública (hex):", pubKeyHex)
-
-	var privKey cryptotypes.PrivKey = secp256k1.GenPrivKeyFromSecret(privKeyBytes)
-	pubKey := privKey.PubKey()
 	
 	// Obter sequência da conta e número da conta
 	accountResp, err := http.Get(fmt.Sprintf("%s/cosmos/auth/v1beta1/accounts/%s", nodeURL, fromAddress))
@@ -146,6 +111,18 @@ msg := wasmtypes.MsgExecuteContract{
 	
 	sequence := gjson.Get(string(accountBody), "account.sequence").Uint()
 	accountNumber := gjson.Get(string(accountBody), "account.account_number").Uint()
+
+	privKeyBytes, err := hex.DecodeString(privateKeyHex)
+	if err != nil {
+		log.Fatalf("failed to decode private key: %v", err)
+	}
+
+
+	var privKey cryptotypes.PrivKey = secp256k1.GenPrivKeyFromSecret(privKeyBytes)
+	pubKey := privKey.PubKey()
+
+
+
 	var sigsV2 []signing.SignatureV2
 	sigV2 := signing.SignatureV2{
 		PubKey: pubKey,
@@ -161,15 +138,15 @@ msg := wasmtypes.MsgExecuteContract{
 		log.Fatalf("Erro na assinatura: %v", err)
     }
 
+	
 	sigsV2 = []signing.SignatureV2{}
-
 	var signerData = xauthsigning.SignerData{
 		ChainID:       chainID,
 		AccountNumber: accountNumber,
 		Sequence:      sequence,
 	}
 	
-
+	
 	sigV2, err =  tx.SignWithPrivKey(
 		signing.SignMode(clientCtx.TxConfig.SignModeHandler().DefaultMode()), signerData,
 		txBuilder, privKey, clientCtx.TxConfig, sequence)
@@ -178,7 +155,10 @@ msg := wasmtypes.MsgExecuteContract{
 	}
 
 	sigsV2 = append(sigsV2, sigV2)
-
+	err = txBuilder.SetSignatures(sigsV2...)
+    if err != nil {
+        log.Fatalf("erro na assinatura : %v", err)
+    }
 	// Generated Protobuf-encoded bytes.
     txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
     if err != nil {

@@ -8,5 +8,5 @@ import (
 
 func main()  {
 	ctx := context.Background()
-	terraclassicda.NewTX4(ctx)
+	terraclassicda.NewTX(ctx)
 }

@@ -1,0 +1,9 @@
+{
+  "lc_url": "http://localhost:1317",
+  "rest_url": "https://terra-classic-lcd.publicnode.com",
+  "app_ID": "localterra",
+  "grpc_server_address": "127.0.0.1:3000",
+  "private_key_hex": "21a5a38c18761a6225ba032dbf398d98595aefaac2b5ace8c18f7a476939e64e",
+  "from_address": "terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8",
+  "contract_address": "terra14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9ssrc8au"
+}

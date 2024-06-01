@@ -26,38 +26,39 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func NewTX(ctx context.Context){
+
+
+func NewTX(configtx Config,ctx context.Context, feeAmount uint64, gasLimit uint64){
 	
-	const (
-		nodeURL         = "http://localhost:1317" // URL do nó Cosmos REST
-		chainID         = "localterra"
-		denom           = "uluna"
-		privateKeyHex   = "21a5a38c18761a6225ba032dbf398d98595aefaac2b5ace8c18f7a476939e64e" // Chave privada em formato hexadecimal
-		fromAddress     = "terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8"           // Endereço do remetente
-		contractAddress = "terra14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9ssrc8au"           // Endereço do contrato inteligente
-		feeAmount       = "2000000"
-		gasLimit        = "200000000"
-	)
-//wasm/v1beta1/tx
+	
+		nodeURL         := configtx.LcURL // URL do nó Cosmos REST
+		chainID         := configtx.AppID
+		denom           := "uluna"
+		privateKeyHex   := configtx.PrivateKeyHex // Chave privada em formato hexadecimal
+		fromAddress     := configtx.FromAddress           // Endereço do remetente
+		contractAddress := configtx.ContractAddress         // Endereço do contrato inteligente
+		// feeAmount       := 230000000
+		// gasLimit        := 2000000
+	
 	config := sdktypes.GetConfig()
 	config.SetBech32PrefixForAccount("terra", "terrapub")
 	config.Seal()
 
 
-executeMsg := map[string]interface{}{
-	"increment": map[string]interface{}{},
-}
-executeMsgBytes, err := json.Marshal(executeMsg)
-if err != nil {
-	log.Fatalf("failed to marshal execute message: %v", err)
-}
+	executeMsg := map[string]interface{}{
+		"increment": map[string]interface{}{},
+	}
+	executeMsgBytes, err := json.Marshal(executeMsg)
+	if err != nil {
+		log.Fatalf("failed to marshal execute message: %v", err)
+	}
 
-msg := wasmtypes.MsgExecuteContract{
-	Sender:   fromAddress,
-	Contract: contractAddress,
-	Msg:      executeMsgBytes,
-	Funds:    sdktypes.Coins{}, // Corrigido para o tipo sdk.Coins
-}
+	msg := wasmtypes.MsgExecuteContract{
+		Sender:   fromAddress,
+		Contract: contractAddress,
+		Msg:      executeMsgBytes,
+		Funds:    sdktypes.Coins{}, // Corrigido para o tipo sdk.Coins
+	}
 
 
     clientCtx := clientx.Context{}.
@@ -85,8 +86,8 @@ msg := wasmtypes.MsgExecuteContract{
 		log.Fatalf("Failed to create message: %v", err)
     }
 
-	txBuilder.SetGasLimit(200000) // Set the gas limit
-    txBuilder.SetFeeAmount(sdktypes.NewCoins(sdktypes.NewInt64Coin("uluna", 230000000) )) 
+	txBuilder.SetGasLimit(uint64(gasLimit)) // Set the gas limit
+    txBuilder.SetFeeAmount(sdktypes.NewCoins(sdktypes.NewInt64Coin(denom, int64(feeAmount)  ) )) 
     txBuilder.SetMemo("")
     txBuilder.SetTimeoutHeight(0)
 	

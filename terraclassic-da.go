@@ -58,6 +58,7 @@ type Config struct {
 	FromAddress       string `json:"from_address"`
 	ContractAddress   string `json:"contract_address"`
 	RestURL           string `json:"rest_url"`
+	
 }
 type GetBlobByBlockRequest struct {
 	GetBlobByBlock struct {
@@ -193,7 +194,6 @@ func (c *TerraClassicDA) Get(ctx context.Context, ids []da.ID, namespace da.Name
 	for _, id := range ids {
 	Loop:
 		//blockNumber = binary.BigEndian.Uint32(id)
-
 		requestData := GetBlobByBlockRequest{
 			GetBlobByBlock: struct {
 				TerraBlockNumber string `json:"terra_block_number"`

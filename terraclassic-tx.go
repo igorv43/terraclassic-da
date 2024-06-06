@@ -5,10 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"strconv"
+	"strings"
 
 	clientx "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -24,7 +23,6 @@ import (
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
-	"github.com/tidwall/gjson"
 )
 type TxResponse struct {
     Height    int64          `json:"height"`    // The block height where the transaction was included
@@ -106,10 +104,10 @@ type SubmitReq struct {
     SubmitBlob SubmitBlob `json:"submit_blob"`
 }
 
-func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,blobID int, feeAmount uint64, gasLimit uint64)( SubmitResponse){
+func NewTerraClassicTX(clientCtx clientx.Context,sequence uint64,accountNumber uint64, configtx Config,ctx context.Context,encodedBlob string,blobID int, feeAmount uint64, gasLimit uint64)( SubmitResponse, error){
 	
 	
-	nodeURL         := configtx.RestURL // URL do nó Cosmos REST
+	
 	chainID         := configtx.AppID
 	denom           := "uluna"
 	privateKeyHex   := configtx.PrivateKeyHex // Chave privada em formato hexadecimal
@@ -136,20 +134,21 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
 	}
 
 
-    clientCtx := clientx.Context{}. WithChainID(chainID). WithNodeURI(nodeURL)
+    // clientCtx := clientx.Context{}. WithChainID(chainID). WithNodeURI(nodeURL)
 
-    // Consultar o nó para obter informações de estado
-    clientCtx = clientCtx.WithNodeURI(nodeURL)
-    rpcClient, err := clientx.NewClientFromNode(nodeURL)
-    if err != nil {
-        log.Fatalf("failed to create RPC client: %v", err)
-    }
-    clientCtx = clientCtx.WithClient(rpcClient)
+    // // Consultar o nó para obter informações de estado
+    // clientCtx = clientCtx.WithNodeURI(nodeURL)
+    // rpcClient, err := clientx.NewClientFromNode(nodeURL)
+    // if err != nil {
+    //     log.Fatalf("failed to create RPC client: %v", err)
+    // }
+    // clientCtx = clientCtx.WithClient(rpcClient)
 	
     // Carregar configurações de transações
     marshaler := codec.NewProtoCodec(clientCtx.InterfaceRegistry)
 	
     txConfig := authtx.NewTxConfig(marshaler, authtx.DefaultSignModes)
+
     clientCtx = clientCtx.WithTxConfig(txConfig)
 	txBuilder:= clientCtx.TxConfig.NewTxBuilder()
 	
@@ -163,22 +162,6 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
     txBuilder.SetMemo("")
     txBuilder.SetTimeoutHeight(0)
 	
-	
-	// Obter sequência da conta e número da conta
-	accountResp, err := http.Get(fmt.Sprintf("%s/cosmos/auth/v1beta1/accounts/%s", nodeURL, fromAddress))
-	if err != nil {
-		log.Fatalf("failed to get account info: %v", err)
-	}
-	defer accountResp.Body.Close()
-
-	accountBody, err := ioutil.ReadAll(accountResp.Body)
-	if err != nil {
-		log.Fatalf("failed to read account response body: %v", err)
-	}
-	
-	
-	sequence := gjson.Get(string(accountBody), "account.sequence").Uint()
-	accountNumber := gjson.Get(string(accountBody), "account.account_number").Uint()
 
 	privKeyBytes, err := hex.DecodeString(privateKeyHex)
 	if err != nil {
@@ -224,6 +207,11 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
     if err != nil {
         log.Fatalf("erro na assinatura : %v", err)
     }
+
+
+
+
+	
 	// Generated Protobuf-encoded bytes.
     txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
     if err != nil {
@@ -268,7 +256,7 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
         grpc.WithInsecure(), // The Cosmos SDK doesn't support any transport security mechanism.
     )
     defer grpcConn.Close()
-
+	var submitrequest SubmitResponse
     // Broadcast the tx via gRPC. We create a new client for the Protobuf Tx
     // service.
     txClient := tyepstx.NewServiceClient(grpcConn)
@@ -280,32 +268,41 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
             TxBytes: txBytes, // Proto-binary of the signed transaction, see previous step.
         },
     )
-	
-    if err != nil {
-		log.Fatalf("erro na transação: %v", err)
-    }
-    
-    //fmt.Println(grpcRes.TxResponse) // Should be `0` if the tx is successful
+	if err != nil {
+		log.Fatalf("failed to BroadcastTx message: %v", err)
+        return submitrequest,err
+	}
+	if(strings.Contains(grpcRes.TxResponse.RawLog, "account sequence mismatch")){
+		return submitrequest,fmt.Errorf("account sequence mismatch")
+	}
+	//requestBodyx, err := json.Marshal(grpcRes)
+	//log.Println("Dados pppp: ", string(requestBodyx))
+    var logs []ABCIMessageLog
+	// var txResponseLog TxResponseLog
+	err = json.Unmarshal([]byte(grpcRes.TxResponse.RawLog), &logs)
+	if err != nil {
+		//fmt.Println("Error parsing TxResponseLog:", err)
+		fmt.Println("RawLog TxResponseLog:", string(grpcRes.TxResponse.RawLog))
+		//log.Println("RawLog TxResponseLog log: ", string(requestBodyx))
+		return submitrequest,err
+	}
+    // //fmt.Println(grpcRes.TxResponse) // Should be `0` if the tx is successful
 	TxResponseBytes, err := json.Marshal(grpcRes.TxResponse)
 	if err != nil {
 		log.Fatalf("failed to marshal TxResponseBytes message: %v", err)
+		return submitrequest,err
 	}
 	var txResponse TxResponse
 	err = json.Unmarshal(TxResponseBytes, &txResponse)
 	if err != nil {
-		log.Fatalln("Error parsing TxResponse:", err)
+		log.Fatalln("Error parsing TxResponse:","account sequence mismatch")
+		return submitrequest,fmt.Errorf("account sequence mismatch")
 	}
 	// TxResponseLogBytes, err := json.Marshal(txResponse.RawLog)
 	// if err != nil {
 	// 	log.Fatalf("failed to marshal TxResponseLogBytes message: %v", err)
 	// }
-	var logs []ABCIMessageLog
-	// var txResponseLog TxResponseLog
-	err = json.Unmarshal([]byte(txResponse.RawLog), &logs)
-	if err != nil {
-		fmt.Println("Error parsing TxResponseLog:", err)
-		fmt.Println("RawLog TxResponseLog:", string(txResponse.RawLog))
-	}
+	
 	terra_block_number := findAttributeByKeyName(logs, "terra_block_number")
 	// if terra_block_number != nil {
 	// 	fmt.Printf("Valor da chave '%s': %s\n", "terra_block_number", terra_block_number.Value)
@@ -315,6 +312,7 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
 	numBlockNumber, err := strconv.ParseUint(terra_block_number.Value, 10, 32)
     if err != nil {
         fmt.Println("Erro ao converter string para uint32:", err)
+		return submitrequest,err
        
     }
 	
@@ -327,12 +325,13 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
 	numblob_count, err := strconv.ParseUint(terra_blob_count.Value, 10, 32)
     if err != nil {
         fmt.Println("Erro ao converter string para uint32:", err)
+		return submitrequest,err
        
     }
 
 
     
-	var submitrequest SubmitResponse
+	
 	submitrequest.BlockHash = txResponse.Data
 	submitrequest.TransactionHash =txResponse.TxHash
 	submitrequest.BlockNumber =uint32(numBlockNumber)
@@ -344,7 +343,7 @@ func NewTerraClassicTX(configtx Config,ctx context.Context,encodedBlob string,bl
 	// }
 
 	//fmt.Println(string(submitrequestBytes))
-	return submitrequest
+	return submitrequest,nil
 }
 // Função personalizada para encontrar um EventAttribute com uma chave específica
 func findAttributeByKeyName(logs []ABCIMessageLog, keyName string) *EventAttribute {

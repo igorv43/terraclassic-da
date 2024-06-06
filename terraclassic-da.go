@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"io/ioutil"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +17,9 @@ import (
 
 	"fmt"
 
+	clientx "github.com/cosmos/cosmos-sdk/client"
 	"github.com/rollkit/go-da"
+	"github.com/tidwall/gjson"
 )
 
 // SubmitRequest represents a request to submit data.
@@ -102,7 +106,42 @@ func (c *TerraClassicDA) MaxBlobSize(ctx context.Context) (uint64, error) {
 	var maxBlobSize uint64 = 64 * 64 * 500
 	return maxBlobSize, nil
 }
+func  (c *TerraClassicDA) ClientTX() (clientx.Context,uint64,uint64, error){
+	
+	nodeURL         := c.config.RestURL // URL do nó Cosmos REST
+	chainID         := c.config.AppID
+	fromAddress     := c.config.FromAddress
+	clientCtx := clientx.Context{}. WithChainID(chainID). WithNodeURI(nodeURL)
 
+    // Consultar o nó para obter informações de estado
+    clientCtx = clientCtx.WithNodeURI(nodeURL)
+    rpcClient, err := clientx.NewClientFromNode(nodeURL)
+    if err != nil {
+        log.Fatalf("failed to create RPC client: %v", err)
+		//return nil, err
+    }
+    clientCtx = clientCtx.WithClient(rpcClient)
+	// Obter sequência da conta e número da conta
+	accountResp, err := http.Get(fmt.Sprintf("%s/cosmos/auth/v1beta1/accounts/%s", nodeURL, fromAddress))
+	if err != nil {
+		log.Fatalf("failed to get account info: %v", err)
+	}
+	defer accountResp.Body.Close()
+
+	accountBody, err := ioutil.ReadAll(accountResp.Body)
+	if err != nil {
+		log.Fatalf("failed to read account response body: %v", err)
+	}
+	
+	
+	sequence := gjson.Get(string(accountBody), "account.sequence").Uint()
+	accountNumber := gjson.Get(string(accountBody), "account.account_number").Uint()
+	return clientCtx, sequence,accountNumber, err
+}
+func isSequenceMismatchError(err error) bool {
+    // Verifique se o erro é devido à incompatibilidade de sequência
+    return strings.Contains(err.Error(), "account sequence mismatch")
+}
 // Submit each blob to avail data availability layer
 func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice float64, namespace da.Namespace) ([]da.ID, error) {
 	resultChan := make(chan SubmitResponse, len(daBlobs))
@@ -111,6 +150,10 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 	var wg sync.WaitGroup
 
 	var mu sync.Mutex
+    var clientCtx,sequence,accountNumber,err = c.ClientTX()
+	if err != nil {
+		log.Fatalf("Failed to create message: %v", err)
+    }
 
 	for _, blob := range daBlobs {
 		wg.Add(1)
@@ -120,8 +163,14 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 			defer wg.Done()
 			encodedBlob := base64.StdEncoding.EncodeToString(blob)
 			blobID:= 1
-			var submitResponsetipo = NewTerraClassicTX(c.config,ctx ,encodedBlob,blobID , 900860000, 2000000)
+			var submitResponsetipo,err = NewTerraClassicTX(clientCtx,sequence,accountNumber,c.config,ctx ,encodedBlob,blobID , 900860000, 2000000)
+			if err != nil {
+				errorChan <- err
+				return
+			}
+			
 			requestBody, err := json.Marshal(submitResponsetipo)
+			//fmt.Println("pega dados para comparar: ",submitResponsetipo)
 			if err != nil {
 				errorChan <- err
 				return
@@ -129,6 +178,7 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 			var submitResponse SubmitResponse
 			err = json.Unmarshal(requestBody, &submitResponse)
 			if err != nil {
+			
 				errorChan <- err
 				return
 			}
@@ -160,7 +210,21 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 		ids = append(ids, makeID(result.BlockNumber))
 		
 	}
-
+	for err := range errorChan {
+		
+		if err == nil {
+            fmt.Printf("Transaction successful")
+            break
+        } else if isSequenceMismatchError(err) {
+            fmt.Println("Sequence mismatch, retrying...")
+            time.Sleep(3 * time.Second) // Atraso antes de tentar novamente
+            continue
+        } else {
+			time.Sleep(2 * time.Second) // Atraso antes de tentar novamente
+           // continue
+            panic(err)
+        }
+	}
 	// Check for errors
 	if err := <-errorChan; err != nil {
 		return nil, err

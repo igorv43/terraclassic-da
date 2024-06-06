@@ -1,5 +1,5 @@
 {
-  "lc_url": "http://localhost:1317",
+  "lc_url": "http://localhost:8000/v2",
   "rest_url": "http://localhost:1317",
 
   "app_ID": "localterra",

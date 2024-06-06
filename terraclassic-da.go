@@ -1,7 +1,6 @@
 package terraclassicda
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/binary"
@@ -48,7 +47,14 @@ type DataContact struct {
 	Data      []DataContractTransactions `json:"data"`
 	
 }
-
+type DataContractTransactionsModel struct {
+	BlockNumber         uint32 `json:"terra_block_number"`
+	PreviousBlockNumber uint32 `json:"terra_previous_block"`
+	Data                []string `json:"data"`
+}
+type DataContactModel struct {
+	Data DataContractTransactionsModel `json:"data"`
+}
 // Config represents the configuration structure.
 type Config struct {
 	AppID             string `json:"app_ID"`
@@ -113,44 +119,22 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 		go func(blob da.Blob) {
 			defer wg.Done()
 			encodedBlob := base64.StdEncoding.EncodeToString(blob)
-			requestData := SubmitRequest{
-				Data: encodedBlob,
-			}
-
-			requestBody, err := json.Marshal(requestData)
+			blobID:= 1
+			var submitResponsetipo = NewTerraClassicTX(c.config,ctx ,encodedBlob,blobID , 900860000, 2000000)
+			requestBody, err := json.Marshal(submitResponsetipo)
 			if err != nil {
 				errorChan <- err
 				return
 			}
-
-			// Make a POST request to the /v2/submit endpoint.
-			response, err := http.Post(c.config.LcURL+"/submit", "application/json", bytes.NewBuffer(requestBody))
-			if err != nil {
-				errorChan <- err
-				return
-			}
-
-			defer func() {
-				err = response.Body.Close()
-				if err != nil {
-					log.Println("error closing response body", err)
-				}
-			}()
-
-			responseData, err := io.ReadAll(response.Body)
-			if err != nil {
-				errorChan <- err
-				return
-			}
-
 			var submitResponse SubmitResponse
-			err = json.Unmarshal(responseData, &submitResponse)
+			err = json.Unmarshal(requestBody, &submitResponse)
 			if err != nil {
 				errorChan <- err
 				return
 			}
 
 			// Acquire the mutex before updating slices
+			//fmt.Println("pega dados para comparar: ",string(requestBody))
 			mu.Lock()
 			resultChan <- SubmitResponse{
 				BlockNumber:      submitResponse.BlockNumber,
@@ -159,7 +143,7 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 				TransactionIndex: submitResponse.TransactionIndex,
 			}
 			mu.Unlock()
-
+           
 		}(blob)
 	}
 
@@ -174,6 +158,7 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 
 	for result := range resultChan {
 		ids = append(ids, makeID(result.BlockNumber))
+		
 	}
 
 	// Check for errors
@@ -181,7 +166,11 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 		return nil, err
 	}
 
-	fmt.Println("successfully submitted blobs to avail")
+	fmt.Println("successfully submitted blobs to terraclassic")
+	for _, id := range ids {
+		blockNumber := binary.BigEndian.Uint32(id)
+		fmt.Println("ids blob terraclassic",blockNumber)
+	}
 	return ids, nil
 }
 
@@ -193,37 +182,37 @@ func (c *TerraClassicDA) Get(ctx context.Context, ids []da.ID, namespace da.Name
 	//var blockNumber uint32
 	for _, id := range ids {
 	Loop:
-		//blockNumber = binary.BigEndian.Uint32(id)
-		requestData := GetBlobByBlockRequest{
+		blockNumber := binary.BigEndian.Uint32(id)
+		requestData := GetBlobByBlockRequestx{
 			GetBlobByBlock: struct {
-				TerraBlockNumber string `json:"terra_block_number"`
+				TerraBlockNumber int `json:"terra_block_number"`
 			}{
-				TerraBlockNumber: string(id),
+				TerraBlockNumber: int(blockNumber),
 			},
 		}
 	
 		// Converter a estrutura da solicitação em JSON
 		requestDataBase64, err := json.Marshal(requestData)
-		
 		if err != nil {
 			fmt.Println("Erro ao criar o corpo da solicitação:", err)
-			
+	
 		}
 		base64Request := base64.StdEncoding.EncodeToString(requestDataBase64)
-
-		blocksURL := fmt.Sprintf(c.config.RestURL+BlockURL, string(base64Request))
+		blocksURL := c.config.RestURL+BlockURL+c.config.ContractAddress+"/smart/"+base64Request
 		parsedURL, err := url.Parse(blocksURL)
 		if err != nil {
-			return nil, err
+			log.Println("error 1", err)
+	
 		}
 		req, err := http.NewRequest("GET", parsedURL.String(), nil)
+		//log.Println("URL ", parsedURL.String())
 		if err != nil {
-			return nil, err
+			log.Println("error 2", err)
 		}
 		client := http.DefaultClient
 		response, err := client.Do(req)
 		if err != nil {
-			return nil, err
+			log.Println("error 3", err)
 		}
 		defer func() {
 			err = response.Body.Close()
@@ -232,22 +221,36 @@ func (c *TerraClassicDA) Get(ctx context.Context, ids []da.ID, namespace da.Name
 			}
 		}()
 		responseData, err := io.ReadAll(response.Body)
+		//log.Println("teste:",string(responseData))
 		if err != nil {
-			return nil, err
+			log.Println("error 3", err)
 		}
-		var blocksObject DataContact
+		var blocksObject DataContactModel
 		if string(responseData) == BLOCK_NOT_FOUND {
-			blocksObject = DataContact{Data: []DataContractTransactions{}}
+			log.Println("sucesso BLOCK_NOT_FOUND")
+			blocksObject = DataContactModel{Data: DataContractTransactionsModel{}}
 		} else if string(responseData) == PROCESSING_BLOCK {
+			log.Println("sucesso PROCESSING_BLOCK")
 			time.Sleep(10 * time.Second)
 			goto Loop
 		} else {
 			err = json.Unmarshal(responseData, &blocksObject)
 			if err != nil {
-				return nil, err
+				log.Println("error 4", err)
 			}
 		}
-		for _, dataTransaction := range blocksObject.Data {
+		var dataContactx DataContact 
+		var listDataContactx  []DataContractTransactions
+		for _, msData := range blocksObject.Data.Data { 
+			listDataContactx = append(listDataContactx, DataContractTransactions{
+				BlockNumber: blocksObject.Data.BlockNumber        ,
+				PreviousBlockNumber: blocksObject.Data.PreviousBlockNumber,
+				Data:                msData,
+			})
+		}
+		dataContactx.Data =listDataContactx
+		
+		for _, dataTransaction := range dataContactx.Data {
 			decodeStr, _ := base64.StdEncoding.DecodeString(dataTransaction.Data)
 			blobs = append(blobs, []byte(string(decodeStr)))
 		}

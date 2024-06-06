@@ -17,7 +17,16 @@ type DataContractTransactionsx struct {
 	Data                string `json:"data"`
 }
 type DataContactx struct {
-	Data DataContractTransactionsx `json:"data"`
+	Data []DataContractTransactionsx `json:"data"`
+}
+
+type DataContractTransactionsModelx struct {
+	BlockNumber         uint32 `json:"terra_block_number"`
+	PreviousBlockNumber uint32 `json:"terra_previous_block"`
+	Data                []string `json:"data"`
+}
+type DataContactModelx struct {
+	Data DataContractTransactionsModelx `json:"data"`
 }
 type GetBlobByBlockRequestx struct {
 	GetBlobByBlock struct {
@@ -25,8 +34,8 @@ type GetBlobByBlockRequestx struct {
 	} `json:"get_blob_by_block"`
 }
 func Ver() {
-	contract_address:="terra1wdz7f49letx7fs58yke57tkmn24ffzxfj8hqmvafuzh5aaevzy7qgkterx"
-	id := 18103462
+	contract_address:="terra1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrquka9l6"
+	id := 23162
 	requestData := GetBlobByBlockRequestx{
 		GetBlobByBlock: struct {
 			TerraBlockNumber int `json:"terra_block_number"`
@@ -42,7 +51,7 @@ func Ver() {
 
 	}
 	base64Request := base64.StdEncoding.EncodeToString(requestDataBase64)
-	blocksURL := "https://terra-classic-lcd.publicnode.com"+BlockURL+contract_address+"/smart/"+base64Request
+	blocksURL := "http://localhost:1317"+BlockURL+contract_address+"/smart/"+base64Request
 	parsedURL, err := url.Parse(blocksURL)
 	if err != nil {
 		log.Println("error 1", err)
@@ -65,13 +74,14 @@ func Ver() {
 		}
 	}()
 	responseData, err := io.ReadAll(response.Body)
+	log.Println("teste:",string(responseData))
 	if err != nil {
 		log.Println("error 3", err)
 	}
-	var blocksObject DataContactx
+	var blocksObject DataContactModel
 	if string(responseData) == BLOCK_NOT_FOUND {
 		log.Println("sucesso BLOCK_NOT_FOUND")
-		blocksObject = DataContactx{Data: DataContractTransactionsx{}}
+		blocksObject = DataContactModel{Data: DataContractTransactionsModel{}}
 	} else if string(responseData) == PROCESSING_BLOCK {
 		log.Println("sucesso PROCESSING_BLOCK")
 		time.Sleep(10 * time.Second)
@@ -82,7 +92,18 @@ func Ver() {
 			log.Println("error 4", err)
 		}
 	}
-	log.Println("sucesso  0",blocksObject.Data.Data)
+	var dataContactx DataContact 
+	var listDataContactx  []DataContractTransactions
+	for _, msData := range blocksObject.Data.Data { 
+		listDataContactx = append(listDataContactx, DataContractTransactions{
+			BlockNumber: blocksObject.Data.BlockNumber        ,
+			PreviousBlockNumber: blocksObject.Data.PreviousBlockNumber,
+			Data:                msData,
+		})
+	}
+	dataContactx.Data =listDataContactx
+
+	 log.Println("sucesso  0",dataContactx.Data)
 	// for _, dataTransaction := range blocksObject.Data {
 	// 	decodeStr, _ := base64.StdEncoding.DecodeString(dataTransaction.Data)
 	// 	log.Println("sucesso ", string(decodeStr))

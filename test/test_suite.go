@@ -73,7 +73,7 @@ func BasicDATest(t *testing.T, da da.DA) {
 	//fmt.Println("subimiiiitttt:")
 	ids, err := da.Submit(ctx, []Blob{msg1, msg2}, -1, nil)
 	assert.NoError(t, err)
-	fmt.Println("sub result 222222:",ids)
+	fmt.Println("sub result:",ids)
 	// assert.Contains(t, ids, expID1)
 	// assert.Contains(t, ids, expID2)
 }

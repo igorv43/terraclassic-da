@@ -38,7 +38,7 @@ func main()  {
 	if err != nil {
 		log.Fatalln("failed to create network listener:", err)
 	}
-	log.Println("serving avail-da over gRPC on:", lis.Addr())
+	log.Println("serving terraclassic-da over gRPC on:", lis.Addr())
 	err = srv.Serve(lis)
 	if !errors.Is(err, grpc.ErrServerStopped) {
 		log.Fatalln("gRPC server stopped with error:", err)

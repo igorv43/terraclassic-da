@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -92,11 +93,39 @@ type TerraClassicDA struct {
 }
 
 // NewTerraClassicDA returns an instance of AvailDA
-func NewTerraClassicDA(config Config, ctx context.Context) *TerraClassicDA {
-	return &TerraClassicDA{
+// func NewTerraClassicDA(config Config, ctx context.Context) *TerraClassicDA {
+// 	return &TerraClassicDA{
+// 		ctx:    ctx,
+// 		config: Config{LcURL: config.LcURL, AppID: config.AppID,PrivateKeyHex: config.PrivateKeyHex, FromAddress: config.FromAddress,ContractAddress: config.ContractAddress,RestURL: config.RestURL},
+// 	}
+// }
+// func NewTerraClassicDA(config Config, ctx context.Context) *TerraClassicDA {
+// 	return &TerraClassicDA{
+// 		ctx:    ctx,
+// 		config: Config{LcURL: config.LcURL, AppID: config.AppID,PrivateKeyHex: config.PrivateKeyHex, FromAddress: config.FromAddress,ContractAddress: config.ContractAddress,RestURL: config.RestURL},
+// 	}
+// }
+func NewTerraClassicDA(opts ...func(*TerraClassicDA) *TerraClassicDA) *TerraClassicDA {
+	ctx := context.Background()
+	data, err := os.ReadFile("config.json")
+		if err != nil {
+			log.Fatalln("Error reading config file:", err)
+		}
+		// Parse the configuration data into a Config struct
+		var config Config
+		err = json.Unmarshal(data, &config)
+		if err != nil {
+			log.Fatalln("Error parsing config file:", err)
+		}
+	da := &TerraClassicDA{
 		ctx:    ctx,
 		config: Config{LcURL: config.LcURL, AppID: config.AppID,PrivateKeyHex: config.PrivateKeyHex, FromAddress: config.FromAddress,ContractAddress: config.ContractAddress,RestURL: config.RestURL},
 	}
+	for _, f := range opts {
+		da = f(da)
+	}
+	//da.pubKey, da.privKey, _ = ed25519.GenerateKey(rand.Reader)
+	return da
 }
 
 var _ da.DA = &TerraClassicDA{}
@@ -106,11 +135,20 @@ func (c *TerraClassicDA) MaxBlobSize(ctx context.Context) (uint64, error) {
 	var maxBlobSize uint64 = 64 * 64 * 500
 	return maxBlobSize, nil
 }
-func  (c *TerraClassicDA) ClientTX() (clientx.Context,uint64,uint64, error){
-	
-	nodeURL         := c.config.RestURL // URL do nó Cosmos REST
-	chainID         := c.config.AppID
-	fromAddress     := c.config.FromAddress
+func   ClientTX() (clientx.Context,uint64,uint64, error){
+	data, err := os.ReadFile("config.json")
+		if err != nil {
+			log.Fatalln("Error reading config file:", err)
+		}
+		// Parse the configuration data into a Config struct
+		var config Config
+		err = json.Unmarshal(data, &config)
+		if err != nil {
+			log.Fatalln("Error parsing config file:", err)
+		}
+	nodeURL         := config.RestURL // URL do nó Cosmos REST
+	chainID         := config.AppID
+	fromAddress     := config.FromAddress
 	clientCtx := clientx.Context{}. WithChainID(chainID). WithNodeURI(nodeURL)
 
     // Consultar o nó para obter informações de estado
@@ -150,7 +188,7 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 	var wg sync.WaitGroup
 
 	var mu sync.Mutex
-    var clientCtx,sequence,accountNumber,err = c.ClientTX()
+    var clientCtx,sequence,accountNumber,err = ClientTX()
 	if err != nil {
 		log.Fatalf("Failed to create message: %v", err)
     }

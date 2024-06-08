@@ -1,7 +1,6 @@
 package terraclassicda_test
 
 import (
-	"context"
 	"sync"
 	"testing"
 
@@ -11,15 +10,15 @@ import (
 )
 
 func TestTerraClassicDA(t *testing.T) {
-	config := terraclassicda.Config{
-		AppID: "localterra",
-		LcURL: "http://localhost:9000/v2",
-		RestURL:"http://localhost:1317",
-		PrivateKeyHex:"21a5a38c18761a6225ba032dbf398d98595aefaac2b5ace8c18f7a476939e64e",
-		FromAddress:"terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8",
-		ContractAddress:"terra1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrquka9l6",
+	// config := terraclassicda.Config{
+	// 	AppID: "localterra",
+	// 	LcURL: "http://localhost:9000/v2",
+	// 	RestURL:"http://localhost:1317",
+	// 	PrivateKeyHex:"21a5a38c18761a6225ba032dbf398d98595aefaac2b5ace8c18f7a476939e64e",
+	// 	FromAddress:"terra1dcegyrekltswvyy0xy69ydgxn9x8x32zdtapd8",
+	// 	ContractAddress:"terra1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrquka9l6",
 
-	}
+	// }
 configx := sdktypes.GetConfig()
 	configx.SetBech32PrefixForAccount("terra", "terrapub")
 	configx.Seal()
@@ -29,9 +28,9 @@ configx := sdktypes.GetConfig()
 	// privateKeyHex   := configtx.PrivateKeyHex // Chave privada em formato hexadecimal
 	// fromAddress     := configtx.FromAddress           // Endereço do remetente
 	// contractAddress := configtx.ContractAddress         // Endereço do contrato inteligente
-	ctx := context.Background()
+	//ctx := context.Background()
 
-	da := terraclassicda.NewTerraClassicDA(config, ctx)
+	da := terraclassicda.NewTerraClassicDA()
 
 	var wg sync.WaitGroup
 	wg.Add(1)

@@ -106,7 +106,9 @@ type TerraClassicDA struct {
 // 	}
 // }
 func NewTerraClassicDA(opts ...func(*TerraClassicDA) *TerraClassicDA) *TerraClassicDA {
-	ctx := context.Background()
+	//ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	data, err := os.ReadFile("config.json")
 		if err != nil {
 			log.Fatalln("Error reading config file:", err)
@@ -188,20 +190,21 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 	var wg sync.WaitGroup
 
 	var mu sync.Mutex
-    var clientCtx,sequence,accountNumber,err = ClientTX()
-	if err != nil {
-		log.Fatalf("Failed to create message: %v", err)
-    }
+    
 
 	for _, blob := range daBlobs {
 		wg.Add(1)
-
+        
 		// Start a goroutine for each blob
 		go func(blob da.Blob) {
 			defer wg.Done()
+			 clientCtx,sequence,accountNumber,err := ClientTX()
+			if err != nil {
+				log.Fatalf("Failed to create message: %v", err)
+			}
 			encodedBlob := base64.StdEncoding.EncodeToString(blob)
 			blobID:= 1
-			var submitResponsetipo,err = NewTerraClassicTX(clientCtx,sequence,accountNumber,c.config,ctx ,encodedBlob,blobID , 900860000, 2000000)
+			 submitResponsetipo,err := NewTerraClassicTX(clientCtx,sequence,accountNumber,c.config,ctx ,encodedBlob,blobID , 900860000, 300000000)
 			if err != nil {
 				errorChan <- err
 				return
@@ -233,6 +236,7 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 			mu.Unlock()
            
 		}(blob)
+		time.Sleep(15 * time.Second)
 	}
 
 	go func() {
@@ -255,12 +259,13 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
             break
         } else if isSequenceMismatchError(err) {
             fmt.Println("Sequence mismatch, retrying...")
-            time.Sleep(3 * time.Second) // Atraso antes de tentar novamente
-            continue
-        } else {
-			time.Sleep(2 * time.Second) // Atraso antes de tentar novamente
+           // time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
            // continue
-            panic(err)
+        } else {
+			time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
+           // continue
+		   fmt.Println("erro geral: ",err)
+           // panic(err)
         }
 	}
 	// Check for errors

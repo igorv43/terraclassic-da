@@ -70,7 +70,7 @@ func BasicDATest(t *testing.T, da da.DA) {
 	assert.NotEmpty(t, ret)
 	assert.Equal(t, []Blob{msg2}, ret)
 
-	//fmt.Println("subimiiiitttt:")
+	fmt.Println("subimiiiitttt:")
 	ids, err := da.Submit(ctx, []Blob{msg1, msg2}, -1, nil)
 	assert.NoError(t, err)
 	fmt.Println("sub result:",ids)

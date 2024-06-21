@@ -8,13 +8,10 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
-	"io"
 	"log"
 	"net/http"
-	"net/url"
 
 	"fmt"
 
@@ -69,8 +66,10 @@ type Config struct {
 	FromAddress       string `json:"from_address"`
 	ContractAddress   string `json:"contract_address"`
 	RestURL           string `json:"rest_url"`
+	FcdURL            string  `json:"fcd_url"`
 	
 }
+
 type GetBlobByBlockRequest struct {
 	GetBlobByBlock struct {
 		TerraBlockNumber string `json:"terra_block_number"`
@@ -121,7 +120,7 @@ func NewTerraClassicDA(opts ...func(*TerraClassicDA) *TerraClassicDA) *TerraClas
 		}
 	da := &TerraClassicDA{
 		ctx:    ctx,
-		config: Config{LcURL: config.LcURL, AppID: config.AppID,PrivateKeyHex: config.PrivateKeyHex, FromAddress: config.FromAddress,ContractAddress: config.ContractAddress,RestURL: config.RestURL},
+		config: Config{LcURL: config.LcURL, AppID: config.AppID,PrivateKeyHex: config.PrivateKeyHex, FromAddress: config.FromAddress,ContractAddress: config.ContractAddress,RestURL: config.RestURL,FcdURL: config.FcdURL},
 	}
 	for _, f := range opts {
 		da = f(da)
@@ -134,7 +133,7 @@ var _ da.DA = &TerraClassicDA{}
 
 // MaxBlobSize returns the max blob size
 func (c *TerraClassicDA) MaxBlobSize(ctx context.Context) (uint64, error) {
-	var maxBlobSize uint64 = 64 * 64 * 500
+	var maxBlobSize uint64 = 64 * 64 * 250
 	return maxBlobSize, nil
 }
 func   ClientTX() (clientx.Context,uint64,uint64, error){
@@ -187,63 +186,67 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 	resultChan := make(chan SubmitResponse, len(daBlobs))
 	errorChan := make(chan error, len(daBlobs))
 
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
 
-	var mu sync.Mutex
+	//var mu sync.Mutex
     
 
-	for _, blob := range daBlobs {
-		wg.Add(1)
-        
+	for id, blob := range daBlobs {
+		//wg.Add(1)
+		
 		// Start a goroutine for each blob
-		go func(blob da.Blob) {
-			defer wg.Done()
+	//	go func(blob da.Blob) {
+			//defer wg.Done()
 			 clientCtx,sequence,accountNumber,err := ClientTX()
 			if err != nil {
 				log.Fatalf("Failed to create message: %v", err)
 			}
+			
 			encodedBlob := base64.StdEncoding.EncodeToString(blob)
-			blobID:= 1
+			blobID:= id
 			 submitResponsetipo,err := NewTerraClassicTX(clientCtx,sequence,accountNumber,c.config,ctx ,encodedBlob,blobID , 900860000, 300000000)
 			if err != nil {
 				errorChan <- err
-				return
+				fmt.Println(err)
+				//return
 			}
 			
 			requestBody, err := json.Marshal(submitResponsetipo)
 			//fmt.Println("pega dados para comparar: ",submitResponsetipo)
 			if err != nil {
 				errorChan <- err
-				return
+				//return
+				fmt.Println(err)
 			}
 			var submitResponse SubmitResponse
 			err = json.Unmarshal(requestBody, &submitResponse)
 			if err != nil {
 			
 				errorChan <- err
-				return
+				//return
+				fmt.Println(err)
 			}
 
 			// Acquire the mutex before updating slices
 			//fmt.Println("pega dados para comparar: ",string(requestBody))
-			mu.Lock()
+			//mu.Lock()
 			resultChan <- SubmitResponse{
 				BlockNumber:      submitResponse.BlockNumber,
 				BlockHash:        submitResponse.BlockHash,
 				TransactionHash:  submitResponse.TransactionHash,
 				TransactionIndex: submitResponse.TransactionIndex,
 			}
-			mu.Unlock()
+			//mu.Unlock()
            
-		}(blob)
+		//}(blob)
 		time.Sleep(15 * time.Second)
 	}
 
-	go func() {
-		wg.Wait()
+	//go func() {
+		//wg.Wait()
 		close(resultChan)
 		close(errorChan)
-	}()
+	//}()
 
 	// Collect results from channels
 	var ids []da.ID
@@ -252,22 +255,22 @@ func (c *TerraClassicDA) Submit(ctx context.Context, daBlobs []da.Blob, gasPrice
 		ids = append(ids, makeID(result.BlockNumber))
 		
 	}
-	for err := range errorChan {
+	// for err := range errorChan {
 		
-		if err == nil {
-            fmt.Printf("Transaction successful")
-            break
-        } else if isSequenceMismatchError(err) {
-            fmt.Println("Sequence mismatch, retrying...")
-           // time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
-           // continue
-        } else {
-			time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
-           // continue
-		   fmt.Println("erro geral: ",err)
-           // panic(err)
-        }
-	}
+	// 	if err == nil {
+    //         fmt.Printf("Transaction successful")
+    //         break
+    //     } else if isSequenceMismatchError(err) {
+    //         fmt.Println("Sequence mismatch, retrying...")
+    //        // time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
+    //        // continue
+    //     } else {
+	// 		time.Sleep(10 * time.Second) // Atraso antes de tentar novamente
+    //        // continue
+	// 	   fmt.Println("erro geral: ",err)
+    //        // panic(err)
+    //     }
+	// }
 	// Check for errors
 	if err := <-errorChan; err != nil {
 		return nil, err
@@ -288,79 +291,21 @@ func (c *TerraClassicDA) Get(ctx context.Context, ids []da.ID, namespace da.Name
 	var blobs [][]byte
 	//var blockNumber uint32
 	for _, id := range ids {
-	Loop:
+	
 		blockNumber := binary.BigEndian.Uint32(id)
-		requestData := GetBlobByBlockRequestx{
-			GetBlobByBlock: struct {
-				TerraBlockNumber int `json:"terra_block_number"`
-			}{
-				TerraBlockNumber: int(blockNumber),
-			},
-		}
-	
-		// Converter a estrutura da solicitação em JSON
-		requestDataBase64, err := json.Marshal(requestData)
-		if err != nil {
-			fmt.Println("Erro ao criar o corpo da solicitação:", err)
-	
-		}
-		base64Request := base64.StdEncoding.EncodeToString(requestDataBase64)
-		blocksURL := c.config.RestURL+BlockURL+c.config.ContractAddress+"/smart/"+base64Request
-		parsedURL, err := url.Parse(blocksURL)
-		if err != nil {
-			log.Println("error 1", err)
-	
-		}
-		req, err := http.NewRequest("GET", parsedURL.String(), nil)
-		//log.Println("URL ", parsedURL.String())
-		if err != nil {
-			log.Println("error 2", err)
-		}
-		client := http.DefaultClient
-		response, err := client.Do(req)
-		if err != nil {
-			log.Println("error 3", err)
-		}
-		defer func() {
-			err = response.Body.Close()
-			if err != nil {
-				log.Println("error closing response body", err)
-			}
-		}()
-		responseData, err := io.ReadAll(response.Body)
-		//log.Println("teste:",string(responseData))
-		if err != nil {
-			log.Println("error 3", err)
-		}
-		var blocksObject DataContactModel
-		if string(responseData) == BLOCK_NOT_FOUND {
-			log.Println("sucesso BLOCK_NOT_FOUND")
-			blocksObject = DataContactModel{Data: DataContractTransactionsModel{}}
-		} else if string(responseData) == PROCESSING_BLOCK {
-			log.Println("sucesso PROCESSING_BLOCK")
-			time.Sleep(10 * time.Second)
-			goto Loop
-		} else {
-			err = json.Unmarshal(responseData, &blocksObject)
-			if err != nil {
-				log.Println("error 4", err)
-			}
-		}
-		var dataContactx DataContact 
-		var listDataContactx  []DataContractTransactions
-		for _, msData := range blocksObject.Data.Data { 
-			listDataContactx = append(listDataContactx, DataContractTransactions{
-				BlockNumber: blocksObject.Data.BlockNumber        ,
-				PreviousBlockNumber: blocksObject.Data.PreviousBlockNumber,
-				Data:                msData,
-			})
-		}
-		dataContactx.Data =listDataContactx
 		
-		for _, dataTransaction := range dataContactx.Data {
-			decodeStr, _ := base64.StdEncoding.DecodeString(dataTransaction.Data)
+	
+		dataBlobs,err:= GetBlock(blockNumber,c.config)
+		if err != nil {
+			//log.Println("error 1", err)
+			return nil, err
+	
+		}
+		for _, data := range dataBlobs {
+			decodeStr, _ := base64.StdEncoding.DecodeString(data)
 			blobs = append(blobs, []byte(string(decodeStr)))
 		}
+		
 	}
 	return blobs, nil
 }

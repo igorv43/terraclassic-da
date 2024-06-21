@@ -2,6 +2,7 @@
   "lc_url": "http://localhost:8000/v2",
   "rest_url": "http://localhost:1317",
   "rpc_url": "http://localhost:26657",
+  "fcd_url": "https://fcd.terra-classic.hexxagon.io",
 
   "app_ID": "localterra",
   "grpc_server_address": "127.0.0.1:3000",

@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	clientx "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -68,17 +71,62 @@ type EventAttribute struct {
 }
 
 // Tx defines a structure for a Cosmos SDK transaction.
-type Tx struct {
-    // Implementation of the transaction details (e.g., messages, signatures)
-}
+// type Tx struct {
+//     // Implementation of the transaction details (e.g., messages, signatures)
+// }
 
 // Event defines a structure for an event.
 type Event struct {
     Type       string            `json:"type"`       // Event type
     Attributes []EventAttribute  `json:"attributes"` // Event attributes
 }
+type Response struct {
+	Limit int `json:"limit"`
+	Txs   []Tx `json:"txs"`
+}
 
+type Tx struct {
+	ID        int       `json:"id"`
+	Tx        TxDetails `json:"tx"`
+	Logs      ABCIMessageLogs     `json:"logs"`
+	Height    string    `json:"height"`
+	Txhash    string    `json:"txhash"`
+	RawLog    string    `json:"raw_log"`
+	GasUsed   string    `json:"gas_used"`
+	Timestamp time.Time `json:"timestamp"`
+	GasWanted string    `json:"gas_wanted"`
+}
 
+type TxDetails struct {
+	Type  string `json:"type"`
+	Value Value  `json:"value"`
+}
+type Value struct {
+	Fee           Fee         `json:"fee"`
+	Msg           []Msg       `json:"msg"`
+	Memo          string      `json:"memo"`
+	Signatures    []Signature `json:"signatures"`
+	TimeoutHeight string      `json:"timeout_height"`
+}
+type Fee struct {
+	Gas    string  `json:"gas"`
+	Amount []Amount `json:"amount"`
+}
+
+type Amount struct {
+	Denom  string `json:"denom"`
+	Amount string `json:"amount"`
+}
+type Msg struct {
+	Type  string `json:"type"`
+	Value MsgValue `json:"value"`
+}
+type MsgValue struct {
+	Msg      map[string]interface{} `json:"msg"`
+	Funds    []interface{} `json:"funds"`
+	Sender   string      `json:"sender"`
+	Contract string      `json:"contract"`
+}
 type ABCIMessageLogx struct {
 	MsgIndex uint32        `json:"msg_index"`
 	Events   []StringEvent `json:"events"`
@@ -100,12 +148,21 @@ type Contents struct {
     Action  string `json:"action"`
     BlobID  int    `json:"blob_id"`
     Message string `json:"message"`
-}
-
+ }
+// type ClaimReward struct {
+// 	LockType int `json:"lock_type"`
+// }
 type SubmitReq struct {
     SubmitBlob SubmitBlob `json:"submit_blob"`
 }
-
+type PubKey struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+type Signature struct {
+	PubKey    PubKey `json:"pub_key"`
+	Signature string `json:"signature"`
+}
 func NewTerraClassicTX(clientCtx clientx.Context,sequence uint64,accountNumber uint64, configtx Config,ctx context.Context,encodedBlob string,blobID int, feeAmount uint64, gasLimit uint64)( SubmitResponse, error){
 	fmt.Println("Sequencia -----------------------------: ", sequence)
 	fmt.Println("accountNumber -----------------------------: ", accountNumber)
@@ -337,4 +394,106 @@ func findAttributeByKeyName(logs []ABCIMessageLog, keyName string) *EventAttribu
 		}
 	}
 	return nil // Retorna nil se não encontrar
+}
+func GetBlock(block uint32,configtx Config) ([]string, error){
+	var DataBlob []string
+   data,_,err:=	SearchBlob(block ,configtx, 0)
+   if err != nil {
+	return nil,err
+   }
+   for _, dataItem := range data {
+	  DataBlob = append(DataBlob, dataItem)
+	}
+	// for limit > 0 {
+	// 	datax,limitx,err:=SearchBlob(block ,configtx, limit)
+	// 	limit = limitx
+	// 	if err != nil {
+	// 	 return nil,err
+	// 	}
+	// 	for _, dataItemx := range datax {
+	// 	   DataBlob = append(DataBlob, dataItemx)
+	// 	 }
+       
+       
+    // }
+	return DataBlob,nil
+}
+func SearchBlob(block uint32,configtx Config, limit int) ([]string,int, error){
+	var DataBlob []string
+	useLimit := ""
+	// if(limit>0){
+	// 	useLimit = "&limit="+fmt.Sprint(limit)
+	// }
+	blocksURL := configtx.FcdURL+"/v1/txs?block="+fmt.Sprint(block)+useLimit
+	parsedURL, err := url.Parse(blocksURL)
+	if err != nil {
+		//log.Println("error 1", err)
+		return nil,0,err
+
+	}
+	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	//log.Println("URL ", parsedURL.String())
+	if err != nil {
+		//log.Println("error 2", err)
+		return nil,0,err
+	}
+	client := http.DefaultClient
+	response, err := client.Do(req)
+	if err != nil {
+		//log.Println("error 3", err)
+		return nil,0,err
+	}
+	defer func() {
+		err = response.Body.Close()
+		if err != nil {
+			log.Println("error closing response body", err)
+			
+		}
+	}()
+	responseData, err := io.ReadAll(response.Body)
+	if err != nil {
+		//log.Println("error 3", err)
+		return nil,0,err
+	}
+	var blocksObject Response
+	if string(responseData) == BLOCK_NOT_FOUND {
+		log.Println("sucesso BLOCK_NOT_FOUND")
+		blocksObject = Response{Txs: []Tx{}}
+	} else if string(responseData) == PROCESSING_BLOCK {
+		log.Println("sucesso PROCESSING_BLOCK")
+		time.Sleep(10 * time.Second)
+		//goto Loop
+	} else {
+		err = json.Unmarshal(responseData, &blocksObject)
+		if err != nil {
+			//log.Println("error 4", err)
+			return nil,0,err
+		}
+	}
+	
+	
+	for _, dataTx := range blocksObject.Txs {
+		for _,msgTx := range dataTx.Tx.Value.Msg {
+			 if(msgTx.Value.Contract ==configtx.ContractAddress)  {
+				parsedMsg, err := parseMsg(msgTx.Value.Msg)
+				if err != nil {
+					fmt.Println("Error parsing msg:", err)
+					
+					return nil,0,err
+				}
+				switch vData := parsedMsg.(type) {
+				case SubmitBlob:
+					DataBlob = append(DataBlob,vData.Contents.Message)
+					
+				// case ClaimReward:
+				// 	fmt.Printf("Parsed ClaimReward: %+v\n", v)
+				default:
+					fmt.Println("Unknown message type")
+				}
+			 } 
+		}
+	}
+	
+	
+	return DataBlob,blocksObject.Limit,nil
 }

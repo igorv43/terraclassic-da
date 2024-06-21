@@ -112,3 +112,102 @@ func Ver() {
 	// }
 
 }
+func Ver2(){
+	contract_address:="terra1wdz7f49letx7fs58yke57tkmn24ffzxfj8hqmvafuzh5aaevzy7qgkterx"
+	id := 18103462
+	blocksURL := "https://fcd.terra-classic.hexxagon.io/v1/txs?block="+fmt.Sprint(id)+"&limit=10"
+	parsedURL, err := url.Parse(blocksURL)
+	if err != nil {
+		log.Println("error 1", err)
+
+	}
+	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	
+	if err != nil {
+		log.Println("error 2", err)
+	}
+	client := http.DefaultClient
+	response, err := client.Do(req)
+	if err != nil {
+		log.Println("error 3", err)
+	}
+	defer func() {
+		err = response.Body.Close()
+		if err != nil {
+			log.Println("error closing response body", err)
+		}
+	}()
+	responseData, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Println("error 3", err)
+	}
+	var blocksObject Response
+	if string(responseData) == BLOCK_NOT_FOUND {
+		log.Println("sucesso BLOCK_NOT_FOUND")
+		blocksObject = Response{Txs: []Tx{}}
+	} else if string(responseData) == PROCESSING_BLOCK {
+		log.Println("sucesso PROCESSING_BLOCK")
+		time.Sleep(10 * time.Second)
+		//goto Loop
+	} else {
+		err = json.Unmarshal(responseData, &blocksObject)
+		if err != nil {
+			log.Println("error 4", err)
+		}
+	}
+	
+	fmt.Println("limit:", blocksObject.Limit)
+	for _, dataTx := range blocksObject.Txs {
+		for _,msgTx := range dataTx.Tx.Value.Msg {
+			 if(msgTx.Value.Contract ==contract_address)  {
+				parsedMsg, err := parseMsg(msgTx.Value.Msg)
+				if err != nil {
+					fmt.Println("Error parsing msg:", err)
+					continue
+				}
+				switch vData := parsedMsg.(type) {
+				case SubmitBlob:
+					
+					fmt.Printf("Parsed SubmitBlob: %+v\n", vData)
+					
+				// case ClaimReward:
+				// 	fmt.Printf("Parsed ClaimReward: %+v\n", v)
+				default:
+					fmt.Println("Unknown message type")
+				}
+			 } 
+		}
+		// dataTx.Tx.Value.
+		// decodeStr, _ := base64.StdEncoding.DecodeString(dataTransaction.Data)
+		// log.Println("sucesso ", string(decodeStr))
+
+		//blobs = append(blobs, []byte(string(decodeStr)))
+	}
+}
+func parseMsg(msg map[string]interface{}) (interface{}, error) {
+	if submitBlob, ok := msg["submit_blob"]; ok {
+		submitBlobData, err := json.Marshal(submitBlob)
+		if err != nil {
+			return nil, err
+		}
+		var sb SubmitBlob
+		err = json.Unmarshal(submitBlobData, &sb)
+		if err != nil {
+			return nil, err
+		}
+		return sb, nil
+	}
+	// if claimReward, ok := msg["claim_reward"]; ok {
+	// 	claimRewardData, err := json.Marshal(claimReward)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	var cr ClaimReward
+	// 	err = json.Unmarshal(claimRewardData, &cr)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	return cr, nil
+	// }
+	return nil, fmt.Errorf("unknown message type")
+}
